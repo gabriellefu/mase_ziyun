@@ -1,4 +1,6 @@
-import math, time, os, logging, torch, glob, shutil
+import math, time, os, logging, torch, glob, shutil, sys
+
+sys.path.append("..")
 
 from chop.passes.graph.utils import vf, v2p, init_project
 from chop.passes.graph.transforms.quantize.quantizers import (
