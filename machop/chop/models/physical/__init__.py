@@ -34,7 +34,7 @@ PHYSICAL_MODELS = {
         ),
     },
 
-        "jsc-ziyun-lab1": {
+    "jsc-ziyun-lab1": {
         "model": get_jsc_ziyun_lab1,
         "info": MaseModelInfo(
             "jsc-s",
