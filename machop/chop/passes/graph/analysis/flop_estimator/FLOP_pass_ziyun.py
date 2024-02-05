@@ -11,7 +11,7 @@ def flop_pass_report(graph):
     for node in graph.fx_graph.nodes:
         module=node.meta['mase'].module
         #print(node.meta['mase'].parameters["common"]["mase_type"])
-        if (node.meta['mase'].parameters["common"]["mase_type"] is "placeholder") or (node.meta['mase'].parameters["common"]["mase_type"] is "output"):
+        if (node.meta['mase'].parameters["common"]["mase_type"] = "placeholder") or (node.meta['mase'].parameters["common"]["mase_type"] = "output"):
             flop_temp=0
         else:
             in_data=node.meta['mase'].parameters["common"]["args"]["data_in_0"]["value"]
@@ -43,3 +43,6 @@ def BitOP_pass_report(graph):
         #print("number_flop=",number_flop)
 
     return number_flop
+
+
+def count_bitop
