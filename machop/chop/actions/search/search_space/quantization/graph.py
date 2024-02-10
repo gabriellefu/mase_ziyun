@@ -100,7 +100,7 @@ class GraphSearchSpaceMixedPrecisionPTQ(SearchSpaceBase):
                             choices[n_name] = deepcopy(seed[n_name])
                         else:
                             choices[n_name] = deepcopy(seed["default"])
-            case "type":
+            case "type": 
                 # iterate through all the quantizeable nodes in the graph
                 # if the node mase_op is in the seed, use the node seed search space
                 # else use the default search space for the node
