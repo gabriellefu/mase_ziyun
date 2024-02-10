@@ -11,7 +11,7 @@ project = "jsc-tiny"
 seed = 42
 log_every_n_steps = 5
 #####
-load_name = "/rds/general/user/zf923/home/mase/mase_output/jsc-tiny_classification_jsc_2024-01-31/software/training_ckpts/best.ckpt"
+load_name = "/workspaces/mase/mase_output/jsc-tiny_classification_jsc_2024-02-10/software/training_ckpts/best.ckpt"
 load_type = "pl"
 ######
 [passes.quantize]
@@ -72,7 +72,7 @@ compare_to = 32 # compare to FP32
 n_jobs = 1
 n_trials = 5
 timeout = 20000
-sampler = "brute-force"
+sampler = "tpe"
 # sum_scaled_metrics = true # single objective
 # direction = "maximize"
 sum_scaled_metrics = false # multi objective

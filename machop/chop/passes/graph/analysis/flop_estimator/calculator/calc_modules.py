@@ -2,7 +2,7 @@ import torch
 import numpy as np
 
 
-def calculate_modules(module, in_data, out_data):
+def calculate_modules(module, in_data, out_data,type,precision):
     # Collect computation statistics.
     if isinstance(module, torch.nn.AdaptiveAvgPool2d):
         # One computation per input pixel - window size is chosen adaptively
@@ -12,18 +12,15 @@ def calculate_modules(module, in_data, out_data):
         output_size = out_data[0].numel()
         computations = input_size
         backward_computations = input_size
-        if (np.dtype(input_size) == "float16") or (np.dtype(input_size) == "int16"):
-            multiple=16
-        elif  np.dtype(input_size) == "int8":
-            multiple=8
-        elif (np.dtype(input_size) == "float32") or (np.dtype(input_size) == "int32"):
-            multiple=32
-        elif (np.dtype(input_size) == "float64") or (np.dtype(input_size) == "int64"):
-            multiple=64
+        float_check=0
+        if type =="float":
+            float_check=1
+
         
         
         return {
-            "bit_computations":computations*multiple,
+            "flop_computations":float_check*computations,
+            "bit_computations":computations*precision,
             "total_parameters": 0,
             "computations": computations,
             "backward_computations": backward_computations,
@@ -34,6 +31,7 @@ def calculate_modules(module, in_data, out_data):
     elif isinstance(module, torch.nn.Embedding):
         total_parameters = module.embedding_dim * in_data[0].numel()
         return {
+            "flop_computations":0,
             "bit_computations":0,
             "total_parameters": total_parameters,
             "computations": 0,
@@ -59,16 +57,13 @@ def calculate_modules(module, in_data, out_data):
         output_size = out_data[0].numel()
         computations = output_size * window_size
         backward_computations = input_size * window_size
-        if (np.dtype(output_size) == "float16") or (np.dtype(output_size) == "int16"):
-            multiple=16
-        elif  np.dtype(output_size) == "int8":
-            multiple=8
-        elif (np.dtype(output_size) == "float32") or (np.dtype(output_size) == "int32"):
-            multiple=32
-        elif (np.dtype(output_size) == "float64") or (np.dtype(output_size) == "int64"):
-            multiple=64
+        float_check=0
+        if type =="float":
+            float_check=1
+
         return {
-            "bit_computations":computations*multiple,
+            "flop_computations":float_check*computations,
+            "bit_computations":computations*precision,
             "total_parameters": 0,
             "computations": computations,
             "backward_computations": backward_computations,
@@ -90,16 +85,14 @@ def calculate_modules(module, in_data, out_data):
 
         computations = output_size * window_size
         backward_computations = input_size * window_size * 2
-        if (np.dtype(output_size) == "float16") or (np.dtype(output_size) == "int16"):
-            multiple=16
-        elif  np.dtype(output_size) == "int8":
-            multiple=8
-        elif (np.dtype(output_size) == "float32") or (np.dtype(output_size) == "int32"):
-            multiple=32
-        elif (np.dtype(output_size) == "float64") or (np.dtype(output_size) == "int64"):
-            multiple=64
+
+        float_check=0
+        if type =="float":
+            float_check=1
+
         return {
-            "bit_computations":computations*multiple,
+            "flop_computations":float_check*computations,
+            "bit_computations":computations*precision,
             "total_parameters": module.weight.numel(),
             "computations": computations,
             "backward_computations": backward_computations,
@@ -111,6 +104,7 @@ def calculate_modules(module, in_data, out_data):
         module, torch.nn.modules.dropout.Dropout
     ):
         return {
+            "flop_computations":0,
             "bit_computations":0,
             "total_parameters": 0,
             "computations": 0,
@@ -132,16 +126,15 @@ def calculate_modules(module, in_data, out_data):
         backward_computations = module.weight.numel() * batch * 2
         input_size = in_data[0].numel()
         output_size = out_data[0].numel()
-        if module.weight.dtype == torch.float16 or module.weight.dtype == torch.int16:
-            multiple = 16
-        elif module.weight.dtype == torch.int8:
-            multiple = 8
-        elif module.weight.dtype == torch.float32 or module.weight.dtype == torch.int32:
-            multiple = 32
-        elif module.weight.dtype == torch.float64 or module.weight.dtype == torch.int64:
-            multiple = 64
+
+        float_check = 0
+        if type == "float":
+            float_check = 1
+
+
         return {
-            "bit_computations":computations*multiple,
+            "flop_computations":float_check*computations,
+            "bit_computations":computations*precision,
             "total_parameters": module.weight.numel(),
             "computations": computations,
             "backward_computations": backward_computations,
@@ -152,18 +145,15 @@ def calculate_modules(module, in_data, out_data):
     elif isinstance(module, torch.nn.modules.activation.ReLU) or isinstance(
         module, torch.nn.modules.activation.ReLU6
     ):
+        float_check=0
+        if type == "float":
+            float_check=1
 
-        if in_data[0].dtype == torch.float16 or in_data[0].dtype == torch.int16:
-            multiple = 16
-        elif in_data[0].dtype == torch.int8:
-            multiple = 8
-        elif in_data[0].dtype == torch.float32 or in_data[0].dtype == torch.int32:
-            multiple = 32
-        elif in_data[0].dtype == torch.float64 or in_data[0].dtype == torch.int64:
-            multiple = 64
+
         # ReLU does a single negation check
         return {
-            "bit_computations":in_data[0].numel()*multiple,
+            "flop_computations":float_check*in_data[0].numel(),
+            "bit_computations":in_data[0].numel()*precision,
             "total_parameters": 0,
             "computations": in_data[0].numel(),
             "backward_computations": in_data[0].numel(),
@@ -172,16 +162,13 @@ def calculate_modules(module, in_data, out_data):
         }
 
     elif isinstance(module, torch.nn.LayerNorm):
-        if (np.dtype( in_data[0]) == "float16") or (np.dtype( in_data[0]) == "int16"):
-            multiple=16
-        elif  np.dtype( in_data[0]) == "int8":
-            multiple=8
-        elif (np.dtype( in_data[0]) == "float32") or (np.dtype( in_data[0]) == "int32"):
-            multiple=32
-        elif (np.dtype( in_data[0]) == "float64") or (np.dtype( in_data[0]) == "int64"):
-            multiple=64
+        float_check=0
+        if type == "float":
+            float_check=1
+
         return {
-            "bit_computations":in_data[0].numel()*multiple* 5,
+            "flop_computations":float_check*computations,
+            "bit_computations":in_data[0].numel()*precision* 5,
             "total_parameters": 0,
             "computations": in_data[0].numel() * 5,
             "backward_computations": in_data[0].numel() * 5,
@@ -195,38 +182,17 @@ def calculate_modules(module, in_data, out_data):
         # (x-running_mean)/running variance
         # multiply by gamma and beta addition
         computations = 4 * in_data[0].numel()
+        float_check=1
         backward_computations = 4 * in_data[0].numel()
-        if isinstance(in_data, torch.Tensor):
-            if in_data.dtype == torch.float16 or in_data.dtype == torch.int16:
-                multiple = 16
-            elif in_data.dtype == torch.int8:
-                multiple = 8
-            elif in_data.dtype == torch.float32 or in_data.dtype == torch.int32:
-                multiple = 32
-            elif in_data.dtype == torch.float64 or in_data.dtype == torch.int64:
-                multiple = 64
-        elif isinstance(in_data, list):
 
-            multiple = 1 
-        elif isinstance(in_data, np.ndarray):
-            if in_data.dtype == np.float16 or in_data.dtype == np.int16:
-                multiple = 16
-            elif  np.dtype( in_data) == "int8":
-                multiple=8
-            elif (np.dtype( in_data) == "float32") or (np.dtype( in_data) == "int32"):
-                multiple=32
-            elif (np.dtype( in_data) == "float64") or (np.dtype( in_data) == "int64"):
-                multiple=64
-        # if (np.dtype( in_data[0]) == "float16") or (np.dtype( in_data[0]) == "int16"):
-        #     multiple=16
-        # elif  np.dtype( in_data[0]) == "int8":
-        #     multiple=8
-        # elif (np.dtype( in_data[0]) == "float32") or (np.dtype( in_data[0]) == "int32"):
-        #     multiple=32
-        # elif (np.dtype( in_data[0]) == "float64") or (np.dtype( in_data[0]) == "int64"):
-        #     multiple=64
+        float_check = 0
+        if type == "float":
+            float_check = 1
+
+
         return {
-            "bit_computations":computations*multiple,
+            "flop_computations":float_check*computations,
+            "bit_computations":computations*precision,
             "total_parameters": total_parameters,
             "computations": computations,
             "backward_computations": backward_computations,
