@@ -23,7 +23,8 @@ As we can refer from the graph, "report_node_meta_param_analysis_pass" present t
 
 
 4.	Write some code to traverse both mg and ori_mg, check and comment on the nodes in these two graphs. You might find the source code for the implementation of summarize_quantization_analysis_pass useful.
-
+* The code I wrote to traverse both mg and ori_mg is shown as follows.
+![alt text](lab4_4_code.png)
 
 5. Perform the same quantisation flow to the bigger JSC network that you have trained in lab1. You must be aware that now the `pass_args` for your custom network might be different if you have used more than the `Linear` layer in your network.
 
