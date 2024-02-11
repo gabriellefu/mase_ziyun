@@ -4,7 +4,7 @@ import os
 from pathlib import Path
 from pprint import pprint as pp
 # figure out the correct path
-machop_path = Path("/rds/general/user/zf923/home/mase_ziyun/machop")
+machop_path = Path("/workspaces/mase/machop")
 assert machop_path.exists(), "Failed to find machop at: {}".format(machop_path)
 sys.path.append(str(machop_path))
 
@@ -190,30 +190,30 @@ class JSC_Three_Linear_Layers(nn.Module):
 
 
 
-# ## the code for task 3
-# pass_config = {
-# "by": "name",
-# "default": {"config": {"name": None}},
-# "seq_blocks_2": {
-#     "config": {
-#         "name": "output_only",
-#         # weight
-#         "channel_multiplier": 2,
-#         }
-#     },
-# "seq_blocks_4": {
-#     "config": {
-#         "name": "both_different",
-#         "channel_multiplier": [2 ,4],
-#         }
-#     },
-# "seq_blocks_6": {
-#     "config": {
-#         "name": "input_only",
-#         "channel_multiplier": 4,
-#         }
-#     },
-# }
+## the code for task 3
+pass_config = {
+"by": "name",
+"default": {"config": {"name": None}},
+"seq_blocks_2": {
+    "config": {
+        "name": "output_only",
+        # weight
+        "channel_multiplier": 2,
+        }
+    },
+"seq_blocks_4": {
+    "config": {
+        "name": "both_different",
+        "channel_multiplier": [2 ,4],
+        }
+    },
+"seq_blocks_6": {
+    "config": {
+        "name": "input_only",
+        "channel_multiplier": 4,
+        }
+    },
+}
 
 
 def redefine_linear_transform_pass(graph, pass_args=None):
@@ -257,125 +257,137 @@ def redefine_linear_transform_pass(graph, pass_args=None):
 
     return graph, {}
 
-# model=JSC_Three_Linear_Layers()
-# from chop.passes.graph import report_graph_analysis_pass
-# _ = report_graph_analysis_pass(mg)
-# mg = MaseGraph(model=model)
-# mg, _ = init_metadata_analysis_pass(mg, None)
-# mg, _ = add_common_metadata_analysis_pass(mg, {"dummy_in": dummy_in})
-# mg, _ = add_software_metadata_analysis_pass(mg, None)
-# # this performs the architecture transformation based on the config
-# mg, _ = redefine_linear_transform_pass(
-#     graph=mg, pass_args={"config": pass_config})
-# _ = report_graph_analysis_pass(mg)
-
-
-
-
-##the code for task 2
-    # define a new model
-class JSC_Three_Linear_Layers(nn.Module):
-    def __init__(self):
-        super(JSC_Three_Linear_Layers, self).__init__()
-        self.seq_blocks = nn.Sequential(
-            nn.BatchNorm1d(16),  # 0
-            nn.ReLU(16),  # 1
-            nn.Linear(16, 16),  # linear seq_2
-            nn.ReLU(16),  # 3
-            nn.Linear(16, 16),  # linear seq_4
-            nn.ReLU(16),  # 5
-            nn.Linear(16, 5),  # linear seq_6
-            nn.ReLU(5),  # 7
-        )
-
-    def forward(self, x):
-        return self.seq_blocks(x)
-    
-
-pass_config = {
-"by": "name",
-"default": {"config": {"name": None}},
-"seq_blocks_2": {
-    "config": {
-        "name": "output_only",
-        # weight
-        "channel_multiplier": 2,
-        }
-    },
-"seq_blocks_4": {
-    "config": {
-        "name": "both_different",
-        "channel_multiplier": [2 ,4],
-        }
-    },
-"seq_blocks_6": {
-    "config": {
-        "name": "input_only",
-        "channel_multiplier": 4,
-        }
-    },
-}
-import copy
-import numpy as np
-#the input size simplifier of the 2nd layer output is the same as the 4th layer input
-#and the simplifier of the 4th layer output is the same of the 6th layer input, thus we only need to choose the value of two simplifier
-first_simplifier=[2,4]
-second_simplifier=[2,4]
-search_spaces = []
-for first_config in first_simplifier:
-    for second_config in second_simplifier:
-        pass_config['seq_blocks_2']['config']['channel_multiplier'] = first_config
-        if first_config==second_config:
-            pass_config['seq_blocks_4']['config']['name']="both"
-            pass_config['seq_blocks_4']['config']['channel_multiplier']=first_config
-        else:
-            pass_config['seq_blocks_4']['config']['name']="both_different"
-            pass_config['seq_blocks_4']['config']['channel_multiplier']=np.array((first_config,second_config))
-        pass_config['seq_blocks_6']['config']['channel_multiplier'] = second_config
-        # dict.copy() and dict(dict) only perform shallow copies
-        # in fact, only primitive data types in python are doing implicit copy when a = b happens
-        search_spaces.append(copy.deepcopy(pass_config))
-
-
-
-import torch
-from torchmetrics.classification import MulticlassAccuracy
-from chop.passes.graph import report_graph_analysis_pass
 model=JSC_Three_Linear_Layers()
 from chop.passes.graph import report_graph_analysis_pass
-mg_ori = MaseGraph(model=model)
-mg_ori, _ = init_metadata_analysis_pass(mg_ori, None)
-mg_ori, _ = add_common_metadata_analysis_pass(mg_ori, {"dummy_in": dummy_in})
-mg_ori, _ = add_software_metadata_analysis_pass(mg_ori, None)
-
-metric = MulticlassAccuracy(num_classes=5)
-num_batchs = 5
-# This first loop is basically our search strategy,
-# in this case, it is a simple brute force search
-
-recorded_accs = []
-for i, config in enumerate(search_spaces):
-    mg, _ = redefine_linear_transform_pass(
-    graph=mg_ori, pass_args={"config": config})
-    _ = report_graph_analysis_pass(mg_ori)
-    j = 0
-
-    # this is the inner loop, where we also call it as a runner.
-    acc_avg, loss_avg = 0, 0
-    accs, losses = [], []
-    for inputs in data_module.train_dataloader():
-        xs, ys = inputs
-        preds = mg.model(xs)
-        loss = torch.nn.functional.cross_entropy(preds, ys)
-        acc = metric(preds, ys)
-        accs.append(acc)
-        losses.append(loss)
-        if j > num_batchs:
-            break
-        j += 1
-    acc_avg = sum(accs) / len(accs)
-    loss_avg = sum(losses) / len(losses)
-    recorded_accs.append(acc_avg)
+_ = report_graph_analysis_pass(mg)
+mg = MaseGraph(model=model)
+mg, _ = init_metadata_analysis_pass(mg, None)
+mg, _ = add_common_metadata_analysis_pass(mg, {"dummy_in": dummy_in})
+mg, _ = add_software_metadata_analysis_pass(mg, None)
+# this performs the architecture transformation based on the config
+mg, _ = redefine_linear_transform_pass(
+    graph=mg, pass_args={"config": pass_config})
+_ = report_graph_analysis_pass(mg)
 
 
-    print(recorded_accs)
+
+
+# ##the code for task 2
+#     # define a new model
+# class JSC_Three_Linear_Layers(nn.Module):
+#     def __init__(self):
+#         super(JSC_Three_Linear_Layers, self).__init__()
+#         self.seq_blocks = nn.Sequential(
+#             nn.BatchNorm1d(16),  # 0
+#             nn.ReLU(16),  # 1
+#             nn.Linear(16, 16),  # linear seq_2
+#             nn.ReLU(16),  # 3
+#             nn.Linear(16, 16),  # linear seq_4
+#             nn.ReLU(16),  # 5
+#             nn.Linear(16, 5),  # linear seq_6
+#             nn.ReLU(5),  # 7
+#         )
+
+#     def forward(self, x):
+#         return self.seq_blocks(x)
+    
+
+# pass_config = {
+# "by": "name",
+# "default": {"config": {"name": None}},
+# "seq_blocks_2": {
+#     "config": {
+#         "name": "output_only",
+#         # weight
+#         "channel_multiplier": 2,
+#         }
+#     },
+# "seq_blocks_4": {
+#     "config": {
+#         "name": "both",
+#         "channel_multiplier": [2 ,4],
+#         }
+#     },
+# "seq_blocks_6": {
+#     "config": {
+#         "name": "input_only",
+#         "channel_multiplier": 4,
+#         }
+#     },
+# }
+# import copy
+# import numpy as np
+# #the input size simplifier of the 2nd layer output is the same as the 4th layer input
+# #and the simplifier of the 4th layer output is the same of the 6th layer input, thus we only need to choose the value of two simplifier
+# mulitiplier=[2,3,4,5,6]
+# search_spaces = []
+# for config in mulitiplier:
+#         pass_config['seq_blocks_2']['config']['channel_multiplier'] = config
+#         pass_config['seq_blocks_4']['config']['channel_multiplier']=config
+#         pass_config['seq_blocks_6']['config']['channel_multiplier'] = config
+#         # dict.copy() and dict(dict) only perform shallow copies
+#         # in fact, only primitive data types in python are doing implicit copy when a = b happens
+#         search_spaces.append(copy.deepcopy(pass_config))
+    
+
+
+# # for first_config in first_simplifier:
+# #     for second_config in second_simplifier:
+# #         pass_config['seq_blocks_2']['config']['channel_multiplier'] = first_config
+# #         if first_config==second_config:
+# #             pass_config['seq_blocks_4']['config']['name']="both"
+# #             pass_config['seq_blocks_4']['config']['channel_multiplier']=first_config
+# #         else:
+# #             pass_config['seq_blocks_4']['config']['name']="both_different"
+# #             pass_config['seq_blocks_4']['config']['channel_multiplier']=np.array((first_config,second_config))
+# #         pass_config['seq_blocks_6']['config']['channel_multiplier'] = second_config
+# #         # dict.copy() and dict(dict) only perform shallow copies
+# #         # in fact, only primitive data types in python are doing implicit copy when a = b happens
+# #         search_spaces.append(copy.deepcopy(pass_config))
+
+
+
+# import torch
+# from torchmetrics.classification import MulticlassAccuracy
+# from chop.passes.graph import report_graph_analysis_pass
+# model=JSC_Three_Linear_Layers()
+# from chop.passes.graph import report_graph_analysis_pass
+# mg_ori = MaseGraph(model=model)
+# mg_ori, _ = init_metadata_analysis_pass(mg_ori, None)
+# mg_ori, _ = add_common_metadata_analysis_pass(mg_ori, {"dummy_in": dummy_in})
+# mg_ori, _ = add_software_metadata_analysis_pass(mg_ori, None)
+
+# metric = MulticlassAccuracy(num_classes=5)
+# num_batchs = 5
+# # This first loop is basically our search strategy,
+# # in this case, it is a simple brute force search
+
+# recorded_accs = []
+# for i, config in enumerate(search_spaces):
+    
+#     mg, _ = redefine_linear_transform_pass(
+#     graph=mg_ori, pass_args={"config": config})
+#     j = 0
+
+#     # this is the inner loop, where we also call it as a runner.
+#     acc_avg, loss_avg = 0, 0
+#     accs, losses = [], []
+#     for inputs in data_module.train_dataloader():
+#         xs, ys = inputs
+#         preds = mg.model(xs)
+#         loss = torch.nn.functional.cross_entropy(preds, ys)
+#         acc = metric(preds, ys)
+#         accs.append(acc)
+#         losses.append(loss)
+#         if j > num_batchs:
+#             break
+#         j += 1
+#     acc_avg = sum(accs) / len(accs)
+#     loss_avg = sum(losses) / len(losses)
+#     print(f"The size is network is {config['seq_blocks_4']['config']['channel_multiplier']} times of its original network.")
+#     print(" Accuracy of this network is ",acc_avg.item())
+#     print()
+#     recorded_accs.append(acc_avg)
+
+
+# print(recorded_accs)
