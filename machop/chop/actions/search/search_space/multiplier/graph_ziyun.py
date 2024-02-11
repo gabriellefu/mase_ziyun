@@ -2,9 +2,9 @@
 from copy import deepcopy
 from torch import nn
 from ..base import SearchSpaceBase
-from .....passes.graph.transforms.quantize import (
-    QUANTIZEABLE_OP,
-    quantize_transform_pass,
+from .....passes.graph.transforms.multiplier import (
+    MULTIPLIER_OP,
+    mulitplier_transform_pass,
 )
 from .....ir.graph.mase_graph import MaseGraph
 from .....passes.graph import (
@@ -15,41 +15,56 @@ from .....passes.graph.utils import get_mase_op, get_mase_type
 from ..utils import flatten_dict, unflatten_dict
 from collections import defaultdict
 
-DEFAULT_QUANTIZATION_CONFIG = {
-"by": "name",
-"default": {"config": {"name": None}},
-"seq_blocks_2": {
-    "config": {
-        "name": "output_only",
-        # weight
-        "channel_multiplier": 2,
-        }
-    },
-"seq_blocks_4": {
-    "config": {
-        "name": "both_different",
-        "channel_multiplier": [2 ,4],
-        }
-    },
-"seq_blocks_6": {
-    "config": {
-        "name": "input_only",
-        "channel_multiplier": 4,
-        }
-    },
+
+from torch import nn
+from chop.passes.graph.utils import get_parent_name
+
+
+
+DEFAULT_MULITIPLE_CONFIG = {
+    "config":{
+        "by": "name",
+        "default": {"config": {"name": None}},
+        "seq_blocks_2": {
+            "config": {
+                "name": "output_only",
+                # weight
+                "channel_multiplier": 2,
+                }
+            },
+        "seq_blocks_4": {
+            "config": {
+                "name": "both_different",
+                "channel_multiplier": [2 ,4],
+                }
+            },
+        "seq_blocks_6": {
+            "config": {
+                "name": "input_only",
+                "channel_multiplier": 4,
+                }
+            },
+
+    }
+
 }
 
+def instantiate_linear(in_features, out_features, bias):
+    if bias is not None:
+        bias = True
+    return nn.Linear(
+        in_features=in_features,
+        out_features=out_features,
+        bias=bias)
 
 
-
-class GraphSearchSpaceSimplifier(SearchSpaceBase):
-
+class GraphSearchSpaceMulitiplier(SearchSpaceBase):
 
     def _post_init_setup(self):
         self.model.to("cpu")  # save this copy of the model to cpu
         self.mg = None
         self._node_info = None
-        self.default_config = DEFAULT_QUANTIZATION_CONFIG
+        self.default_config = DEFAULT_MULITIPLE_CONFIG
 
         assert (
             "by" in self.config["setup"]
@@ -71,9 +86,9 @@ class GraphSearchSpaceSimplifier(SearchSpaceBase):
             mg, _ = add_common_metadata_analysis_pass(
                 mg, {"dummy_in": self.dummy_input}
             )
-            self.mg = mg
+            #self.mg = mg
         if sampled_config is not None:
-            mg, _ = quantize_transform_pass(self.mg, sampled_config)
+            mg, _ = redefine_linear_transform_pass(mg, pass_args= sampled_config)
         mg.model.to(self.accelerator)
         return mg
 
@@ -90,20 +105,22 @@ class GraphSearchSpaceSimplifier(SearchSpaceBase):
         mase_graph = self.rebuild_model(sampled_config=None, is_eval_mode=True)
         node_info = {}
         for node in mase_graph.fx_graph.nodes:
+            #print("name=",node.name)
             node_info[node.name] = {
                 "name": node.name,
-                "in_features": node.in_features ,
-                "out_features": node.out_features
+                "mase_op":get_mase_op(node)
+
             }
 
         # Build the search space
         choices = {}
         seed = self.config["seed"]
+        print(seed)
 
         match self.config["setup"]["by"]:
             case "name":
                 for n_name, n_info in node_info.items():
-                    if n_info["mase_op"] in QUANTIZEABLE_OP:
+                    if n_info["mase_op"] in MULTIPLIER_OP:
                         if n_name in seed:
                             choices[n_name] = deepcopy(seed[n_name])
                         else:
@@ -158,3 +175,57 @@ class GraphSearchSpaceSimplifier(SearchSpaceBase):
         config["default"] = self.default_config
         config["by"] = self.config["setup"]["by"]
         return config
+    
+
+
+
+
+
+
+def redefine_linear_transform_pass(graph, pass_args=None):
+        main_config = pass_args
+        default = main_config.pop('default', None)
+        if default is None:
+            raise ValueError(f"default value must be provided.")
+        i = 0
+        last_output=0
+        for node in graph.fx_graph.nodes:
+            i += 1
+            # if node name is not matched, it won't be tracked
+            config = main_config.get(node.name, default)['config']
+            name = config.get("name", None)
+            # print(node.meta["mase"].parameters["common"].keys())
+            linear_flag=0
+
+            if name is not None:
+                if (node.meta["mase"].parameters["common"]["mase_op"] == "linear" )and (linear_flag==0):
+                    linear_flag=1
+                ori_module = graph.modules[node.target]
+                in_features = ori_module.in_features
+                out_features = ori_module.out_features
+                bias = ori_module.bias
+                if name == "output_only":
+                    out_features = out_features * config["channel_multiplier"]
+                elif name == "input_only":
+                    in_features = last_output
+                elif name == "both":
+                    muliplier_output=config["channel_multiplier"]
+                    in_features = last_output
+                    out_features = out_features * muliplier_output
+                print("cogif",config)
+                print("last output is ", last_output)
+                last_output=out_features
+                print("This input is", in_features)
+                print("This output is", out_features)
+                print()
+
+
+                new_module = instantiate_linear(in_features, out_features, bias)
+                parent_name, name = get_parent_name(node.target)
+                setattr(graph.modules[parent_name], name, new_module)
+            elif   node.meta["mase"].parameters["common"]["mase_op"] == "relu":
+                new_module=nn.ReLU()
+                parent_name, name = get_parent_name(node.target)
+                setattr(graph.modules[parent_name], name, new_module)
+
+        return graph, {}

@@ -32,6 +32,10 @@ QUANTIZEABLE_OP = (
     "sub",
 )
 
+MULTIPLIER_OP = (
+    "linear"
+)
+
 
 def get_config(config: dict, name: str):
     if name in config:
@@ -228,3 +232,37 @@ def quantize_transform_pass(graph, pass_args=None):
     # link the model with graph
     graph.model = torch.fx.GraphModule(graph.model, graph.fx_graph)
     return graph, {}
+
+
+
+def mulitplier_transform_pass(graph, pass_args=None):
+    """
+    Apply quantization transformation to the given graph.
+
+    :param graph: The input graph to be transformed.
+    :type graph: MaseGraph
+
+    :param pass_args: Additional arguments for the transformation.
+    :type pass_args: dict, optional
+
+    :return: The transformed graph.
+    :rtype: tuple
+    :raises ValueError: If the quantize "by" argument is unsupported.
+
+
+    - pass_args
+        - by -> str : different quantization schemes choose from ["type", "name", "regx_name"]
+    """
+
+    by = pass_args.pop("by")
+    match by:
+        case "name":
+            graph = graph_iterator_quantize_by_name(graph, pass_args)
+        case _:
+            raise ValueError(f'Unsupported quantize "by": {by}')
+
+    # link the model with graph
+    graph.model = torch.fx.GraphModule(graph.model, graph.fx_graph)
+    return graph, {}
+
+

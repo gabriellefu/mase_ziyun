@@ -155,3 +155,13 @@ pass_config = {
 ![alt text](lab4_3result.png)
 
 4. Integrate the search to the chop flow, so we can run it from the command line.
+How to extend search_space?
+[Required] Create a new search space class that inherits from SearchSpaceBase at mase-tools/machop/chop/actions/search/search_space/base.py and implement corresponding abstract methods.
+
+[Required] Register the new search space to SEARCH_SPACE_MAP at mase-tools/machop/chop/actions/search/search_space/__init__.py.
+
+[Optional] Add new software (hardware) metrics:
+
+subclass SoftwareRunnerBase at mase-tools/machop/chop/actions/search/runners/software/base.pyand implement corresponding abstract methods.
+
+Register the new software metrics at SOFTWARE_RUNNER_MAP at mase-tools/machop/chop/actions/search/runners/software/__init__.py.

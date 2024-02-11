@@ -203,7 +203,7 @@ pass_config = {
     },
 "seq_blocks_4": {
     "config": {
-        "name": "both_different",
+        "name": "both",
         "channel_multiplier": [2 ,4],
         }
     },
@@ -235,12 +235,9 @@ def redefine_linear_transform_pass(graph, pass_args=None):
             bias = ori_module.bias
             if name == "output_only":
                 out_features = out_features * config["channel_multiplier"]
-            elif name == "both":
-                in_features = in_features * config["channel_multiplier"]
-                out_features = out_features * config["channel_multiplier"]
             elif name == "input_only":
                 in_features = in_features * config["channel_multiplier"]
-            elif name == "both_different":
+            elif name == "both":
                 muliplier_input=config["channel_multiplier"][0]
                 muliplier_output=config["channel_multiplier"][1]
                 in_features = in_features * muliplier_input
@@ -338,7 +335,7 @@ _ = report_graph_analysis_pass(mg)
 # #             pass_config['seq_blocks_4']['config']['name']="both"
 # #             pass_config['seq_blocks_4']['config']['channel_multiplier']=first_config
 # #         else:
-# #             pass_config['seq_blocks_4']['config']['name']="both_different"
+# #             pass_config['seq_blocks_4']['config']['name']="both"
 # #             pass_config['seq_blocks_4']['config']['channel_multiplier']=np.array((first_config,second_config))
 # #         pass_config['seq_blocks_6']['config']['channel_multiplier'] = second_config
 # #         # dict.copy() and dict(dict) only perform shallow copies
@@ -369,25 +366,25 @@ _ = report_graph_analysis_pass(mg)
 #     graph=mg_ori, pass_args={"config": config})
 #     j = 0
 
-#     # this is the inner loop, where we also call it as a runner.
-#     acc_avg, loss_avg = 0, 0
-#     accs, losses = [], []
-#     for inputs in data_module.train_dataloader():
-#         xs, ys = inputs
-#         preds = mg.model(xs)
-#         loss = torch.nn.functional.cross_entropy(preds, ys)
-#         acc = metric(preds, ys)
-#         accs.append(acc)
-#         losses.append(loss)
-#         if j > num_batchs:
-#             break
-#         j += 1
-#     acc_avg = sum(accs) / len(accs)
-#     loss_avg = sum(losses) / len(losses)
-#     print(f"The size is network is {config['seq_blocks_4']['config']['channel_multiplier']} times of its original network.")
-#     print(" Accuracy of this network is ",acc_avg.item())
-#     print()
-#     recorded_accs.append(acc_avg)
+    # this is the inner loop, where we also call it as a runner.
+    acc_avg, loss_avg = 0, 0
+    accs, losses = [], []
+    for inputs in data_module.train_dataloader():
+        xs, ys = inputs
+        preds = mg.model(xs)
+        loss = torch.nn.functional.cross_entropy(preds, ys)
+        acc = metric(preds, ys)
+        accs.append(acc)
+        losses.append(loss)
+        if j > num_batchs:
+            break
+        j += 1
+    acc_avg = sum(accs) / len(accs)
+    loss_avg = sum(losses) / len(losses)
+    print(f"The size is network is {config['seq_blocks_4']['config']['channel_multiplier']} times of its original network.")
+    print(" Accuracy of this network is ",acc_avg.item())
+    print()
+    recorded_accs.append(acc_avg)
 
 
 # print(recorded_accs)
