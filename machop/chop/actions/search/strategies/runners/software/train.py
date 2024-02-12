@@ -210,18 +210,22 @@ class RunnerBasicTrain(SWRunnerBase):
             ), "num_samples and max_epochs cannot be both -1"
 
             num_batches_per_epoch = len(data_module.train_dataloader())
+            #print("num_samples",num_samples)
             num_samples = min(
                 max(num_samples, 1),
                 num_batches_per_epoch * data_module.batch_size * max_epochs,
             )
+            #
             num_batches = math.ceil(num_samples / data_module.batch_size)
+            print(num_batches)
 
             # ddp_sampler = DistributedSampler(data_module.train_dataset)
+            model_totrain=model.model
 
             train_dataloader = data_module.train_dataloader()
             steps_per_epoch = len(train_dataloader)
             optimizer = get_optimizer(
-                model=model.model,
+                model=model_totrain,
                 optimizer=self.config["optimizer"],
                 learning_rate=self.config["learning_rate"],
                 weight_decay=self.config.get("weight_decay", 0.0),
@@ -232,34 +236,39 @@ class RunnerBasicTrain(SWRunnerBase):
             train_iter = iter(train_dataloader)
             train_iter = iter(train_dataloader)
             criterion = nn.CrossEntropyLoss()
-            total_loss=0
-            for step_i in range(num_batches):
+            
+            for epoch in range(max_epochs):
+                for step_i in range(num_batches):
 
-                if step_i > num_batches:
-                    break
+                    if step_i > num_batches:
+                        break
 
-                try:
-                    data, labels = next(train_iter)
-                except StopIteration:
-                    train_iter = iter(train_dataloader)
-                    batch = next(train_iter)
-
-                model.model.train()
-                
-                data, labels = data.to(self.accelerator), labels.to(self.accelerator)
-                outputs = model.model(data)
-                loss_i = criterion(outputs, labels)
-                loss_i = loss_i / grad_accumulation_steps
-                loss_i.requires_grad_(True)
-                loss_i.backward()
-                total_loss=total_loss+loss_i.item()
-
-                if (step_i + 1) % grad_accumulation_steps == 0 or step_i == num_batches - 1:
+                    try:
+                        data, labels = next(train_iter)
+                    except StopIteration:
+                        train_iter = iter(train_dataloader)
+                        batch = next(train_iter)
+                    
+                    model_totrain.train()
+                    data, labels = data.to(self.accelerator), labels.to(self.accelerator)
+                    outputs = model_totrain(data)
+                    loss_i = criterion(outputs, labels)
+                    loss_i = loss_i / grad_accumulation_steps
+                    loss_i.requires_grad_(True)
+                    loss_i.backward()
                     optimizer.step()
                     optimizer.zero_grad()
 
-            loss_ave=total_loss/num_batches
-            self.loss(loss_ave)
+
+            model_totrain.eval()
+            val_dataloader = data_module.val_dataloader()
+            data, labels = next(iter(val_dataloader))
+            data, labels = data.to(self.accelerator), labels.to(self.accelerator)
+            outputs = model_totrain(data)
+            loss = nn.CrossEntropyLoss()(outputs, labels)
+            self.metric(outputs, labels)
+            self.loss(loss)
+
             
             
 

@@ -70,7 +70,7 @@ compare_to = 32 # compare to FP32
 
 [search.strategy.setup]
 n_jobs = 1
-n_trials = 5
+n_trials = 20
 timeout = 20000
 sampler = "tpe"
 # sum_scaled_metrics = true # single objective

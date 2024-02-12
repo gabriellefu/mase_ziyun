@@ -81,49 +81,46 @@ class JSC_Three_Linear_Layers(nn.Module):
         return self.seq_blocks(x)
 ```
 
->* In this task, we notice that the input scaled by 2 but output scaled by 4 in seq_blocks_4. Thus, we can define a new redefine_linear_transform_pass() function that consider the possibility that the input and output of one seq_block is scaled with different values.
->* The code of the new function is shown as follows. We add a new name "both_different" and when the name of a config is "both_different", the first value is the scale of its input and the second value is the scale of its output.
+>* In this task, we notice that the input size of a node must aligns with the output size with the output in the former layer. In this case, when we want to change both the input_feature size and the output_feature size, we only need to choose one value for its output size and set its input size the same as the output size of the layer before.
+>* For the same reason, when we only need to change the input size, actually we don't need to choose a specific value of this input size. 
+>* The code of the new function is shown as follows. We follow the rules above and save the output size of the last node and used it as the input size of the node when it needed to be modified.
 ```python
 def redefine_linear_transform_pass(graph, pass_args=None):
-    main_config = pass_args.pop('config')
-    default = main_config.pop('default', None)
-    if default is None:
-        raise ValueError(f"default value must be provided.")
-    i = 0
-    for node in graph.fx_graph.nodes:
-        i += 1
-        # if node name is not matched, it won't be tracked
-        config = main_config.get(node.name, default)['config']
-        name = config.get("name", None)
-        # print(node.meta["mase"].parameters["common"].keys())
-        if name is not None:
-            ori_module = graph.modules[node.target]
-            in_features = ori_module.in_features
-            out_features = ori_module.out_features
-            bias = ori_module.bias
-            if name == "output_only":
-                out_features = out_features * config["channel_multiplier"]
-            elif name == "both":
-                in_features = in_features * config["channel_multiplier"]
-                out_features = out_features * config["channel_multiplier"]
-            elif name == "input_only":
-                in_features = in_features * config["channel_multiplier"]
-            elif name == "both_different":
-                muliplier_input=config["channel_multiplier"][0]
-                muliplier_output=config["channel_multiplier"][1]
-                in_features = in_features * muliplier_input
-                out_features = out_features * muliplier_output
+        main_config = pass_args
+        default = main_config.pop('default', None)
+        if default is None:
+            raise ValueError(f"default value must be provided.")
+        i = 0
+        last_output=0
+        for node in graph.fx_graph.nodes:
+            i += 1
+            # if node name is not matched, it won't be tracked
+            config = main_config.get(node.name, default)['config']
+            name = config.get("name", None)
+            # print(node.meta["mase"].parameters["common"].keys())
+            if name is not None:
+                ori_module = graph.modules[node.target]
+                in_features = ori_module.in_features
+                out_features = ori_module.out_features
+                bias = ori_module.bias
+                if name == "output_only":
+                    out_features = out_features * config["channel_multiplier"]
+                elif name == "input_only":
+                    in_features = last_output
+                elif name == "both":
+                    muliplier_output=config["channel_multiplier"]
+                    in_features = last_output
+                    out_features = out_features * muliplier_output
+                last_output=out_features
+                new_module = instantiate_linear(in_features, out_features, bias)
+                parent_name, name = get_parent_name(node.target)
+                setattr(graph.modules[parent_name], name, new_module)
+            elif   node.meta["mase"].parameters["common"]["mase_op"] == "relu":
+                new_module=nn.ReLU()
+                parent_name, name = get_parent_name(node.target)
+                setattr(graph.modules[parent_name], name, new_module)
 
-
-            new_module = instantiate_linear(in_features, out_features, bias)
-            parent_name, name = get_parent_name(node.target)
-            setattr(graph.modules[parent_name], name, new_module)
-        elif   node.meta["mase"].parameters["common"]["mase_op"] == "relu":
-            new_module=nn.ReLU()
-            parent_name, name = get_parent_name(node.target)
-            setattr(graph.modules[parent_name], name, new_module)
-
-    return graph, {}
+        return graph, {}
 ```
 >* Then we set the config of the new pass as follows.
 ```python
@@ -140,7 +137,7 @@ pass_config = {
 "seq_blocks_4": {
     "config": {
         "name": "both_different",
-        "channel_multiplier": [2 ,4],
+        "channel_multiplier": 4,
         }
     },
 "seq_blocks_6": {
@@ -155,13 +152,27 @@ pass_config = {
 ![alt text](lab4_3result.png)
 
 4. Integrate the search to the chop flow, so we can run it from the command line.
-How to extend search_space?
-[Required] Create a new search space class that inherits from SearchSpaceBase at mase-tools/machop/chop/actions/search/search_space/base.py and implement corresponding abstract methods.
+>* We firstly made a new toml file for the configuration of the search in /workspaces/mase/machop/configs/examples/lab4_ziyun.toml.
+>* Then we bulid a search space GraphSearchSpaceMulitiplier(SearchSpaceBase) and transmit the configuration in each search to redefine_linear_transform_pass() in /workspaces/mase/machop/chop/actions/search/search_space/multiplier/graph_ziyun.py.
+>* We also modify /workspaces/mase/machop/chop/actions/search/strategies/runners/software/train.pyand return the validation loss and accuracy in each structure.
+>* The seach is integrate to the chop flow and we can used the cmd "./ch search --config /workspaces/mase/machop/configs/examples/lab4_ziyun.toml --load /workspaces/mase/mase_output/jsc-three-layer_classification_jsc_2024-02-11/software/training_ckpts/best.ckpt" to run it.
+>* The result of search is shown as follows.
 
-[Required] Register the new search space to SEARCH_SPACE_MAP at mase-tools/machop/chop/actions/search/search_space/__init__.py.
+|    | number | software_metrics                   | hardware_metrics                                | scaled_metrics                                |
+|----|--------|-------------------------------------|-------------------------------------------------|-----------------------------------------------|
+| 0  | 1      | {'loss': 1.607, 'accuracy': 0.233} | {'average_bitwidth': 32, 'memory_density': 1.0} | {'accuracy': 0.233, 'average_bitwidth': 6.4} |
 
-[Optional] Add new software (hardware) metrics:
 
-subclass SoftwareRunnerBase at mase-tools/machop/chop/actions/search/runners/software/base.pyand implement corresponding abstract methods.
-
-Register the new software metrics at SOFTWARE_RUNNER_MAP at mase-tools/machop/chop/actions/search/runners/software/__init__.py.
+>* The config structure of the best network is shown as follows.
+```python
+        self.seq_blocks = nn.Sequential(
+            nn.BatchNorm1d(16),
+            nn.ReLU(16),
+            nn.Linear(16, 48),  # output scaled by 3
+            nn.ReLU(48),  # scaled by 3
+            nn.Linear(48, 32),  # input scaled by 3 but output scaled by 2
+            nn.ReLU(32),  # scaled by 2
+            nn.Linear(32, 5),  # scaled by 2
+            nn.ReLU(5),
+        )
+```

@@ -212,12 +212,7 @@ def redefine_linear_transform_pass(graph, pass_args=None):
                     muliplier_output=config["channel_multiplier"]
                     in_features = last_output
                     out_features = out_features * muliplier_output
-                print("cogif",config)
-                print("last output is ", last_output)
                 last_output=out_features
-                print("This input is", in_features)
-                print("This output is", out_features)
-                print()
 
 
                 new_module = instantiate_linear(in_features, out_features, bias)
